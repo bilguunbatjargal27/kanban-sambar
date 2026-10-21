@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kanban Sambar — Project Walkthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #16161a; --panel: #1f1f24; --card: #2a2a30; --border: #34343b;
+    --text: #ececf1; --muted: #9a9aa5; --primary: #6366f1;
+    --blue: #3b82f6; --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --purple: #a855f7;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f6f8; --panel: #ffffff; --card: #f0f0f4; --border: #dcdce3; --text: #18181b; --muted: #5f5f6b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font-family: Inter, system-ui, sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  h2 { font-size: 21px; margin: 0 0 4px; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  p { margin: 0 0 10px; }
+  .sub { color: var(--muted); margin-bottom: 14px; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.86em; }
+  code { background: var(--card); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-top: 20px; min-width: 0; }
+  .eyebrow { color: var(--primary); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card ul { margin: 6px 0 0; padding-left: 18px; }
+  .card li { margin-bottom: 4px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
+  .p-blue { background: var(--blue); } .p-green { background: var(--green); } .p-amber { background: var(--amber); }
+  .p-red { background: var(--red); } .p-purple { background: var(--purple); } .p-gray { background: #6b7280; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .why { color: var(--green); } .cost { color: var(--amber); }
+  figure { margin: 16px 0 0; }
+  svg { width: 100%; height: auto; display: block; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .stack-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 14px; padding: 16px 0; border-top: 1px solid var(--border); }
+  .stack-row:first-of-type { border-top: none; }
+  .stack-row .name { font-weight: 700; }
+  .stack-row .name small { display: block; color: var(--muted); font-weight: 500; }
+  .tri { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; }
+  .tri > div { background: var(--card); border-radius: 8px; padding: 10px 12px; font-size: 14px; min-width: 0; }
+  .tri b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+  @media (max-width: 720px) {
+    .stack-row { grid-template-columns: 1fr; gap: 6px; }
+    .tri { grid-template-columns: 1fr; }
+    section { padding: 18px; }
+  }
+  .callout { border-left: 3px solid var(--primary); background: var(--card); padding: 12px 14px; border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 14px; }
+  .sev { font-weight: 700; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="eyebrow">Fullstack interview · Kanban Sambar</div>
+  <h1>What I built, and why it's built this way</h1>
+  <p class="sub">A personal Kanban board: email/password auth, three columns, task CRUD with due date and label, drag-and-drop reordering saved to Postgres, search and filter, and a responsive layout. About 900 lines across 9 source files.</p>
+</header>
+
+<!-- 1. ARCHITECTURE -->
+<section id="architecture">
+  <div class="eyebrow">1 · Architecture</div>
+  <h2>Three pieces, one direction of trust</h2>
+  <p class="sub">The browser holds only a token. Every rule about who owns what is enforced on the server and in the database.</p>
+  <figure>
+    <svg viewBox="0 0 960 250" role="img" aria-labelledby="arch-t">
+      <title id="arch-t">Browser talks JSON over HTTP to FastAPI, which talks SQL to Postgres</title>
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+        </marker>
+      </defs>
+      <g id="node-browser"><title>React frontend</title>
+        <rect x="10" y="30" width="270" height="190" rx="14" fill="var(--card)" stroke="var(--blue)" stroke-width="2" />
+        <text x="30" y="64" fill="var(--text)" font-size="18" font-weight="700">Browser · React + Vite</text>
+        <text x="30" y="96" fill="var(--muted)" font-size="14">Login / Register screen</text>
+        <text x="30" y="120" fill="var(--muted)" font-size="14">Board · 3 columns · drag &amp; drop</text>
+        <text x="30" y="144" fill="var(--muted)" font-size="14">Search + filters (in memory)</text>
+        <text x="30" y="168" fill="var(--muted)" font-size="14">JWT in localStorage</text>
+        <text x="30" y="200" fill="var(--blue)" font-size="13" class="mono">localhost:5173</text>
+      </g>
+      <g id="edge-http"><title>REST + JSON, Authorization: Bearer token</title>
+        <line x1="290" y1="110" x2="380" y2="110" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar)" />
+        <line x1="380" y1="140" x2="290" y2="140" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar)" />
+        <text x="335" y="98" fill="var(--muted)" font-size="12" text-anchor="middle">JSON + Bearer</text>
+        <text x="335" y="162" fill="var(--muted)" font-size="12" text-anchor="middle">JSON</text>
+      </g>
+      <g id="node-api"><title>FastAPI backend</title>
+        <rect x="390" y="30" width="270" height="190" rx="14" fill="var(--card)" stroke="var(--primary)" stroke-width="2" />
+        <text x="410" y="64" fill="var(--text)" font-size="18" font-weight="700">API · FastAPI</text>
+        <text x="410" y="96" fill="var(--muted)" font-size="14">Pydantic validates every body</text>
+        <text x="410" y="120" fill="var(--muted)" font-size="14">bcrypt + JWT (auth.py)</text>
+        <text x="410" y="144" fill="var(--muted)" font-size="14">current_user on every task route</text>
+        <text x="410" y="168" fill="var(--muted)" font-size="14">Swagger docs at /docs</text>
+        <text x="410" y="200" fill="var(--primary)" font-size="13" class="mono">localhost:8000</text>
+      </g>
+      <g id="edge-sql"><title>SQLAlchemy over psycopg</title>
+        <line x1="670" y1="125" x2="760" y2="125" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar)" />
+        <text x="715" y="113" fill="var(--muted)" font-size="12" text-anchor="middle">SQL</text>
+      </g>
+      <g id="node-db"><title>PostgreSQL</title>
+        <rect x="770" y="30" width="180" height="190" rx="14" fill="var(--card)" stroke="var(--green)" stroke-width="2" />
+        <text x="790" y="64" fill="var(--text)" font-size="18" font-weight="700">Postgres 14</text>
+        <text x="790" y="96" fill="var(--muted)" font-size="14">users</text>
+        <text x="790" y="120" fill="var(--muted)" font-size="14">tasks</text>
+        <text x="790" y="144" fill="var(--muted)" font-size="14">FK + CHECK rules</text>
+        <text x="790" y="200" fill="var(--green)" font-size="13" class="mono">kanban_sambar</text>
+      </g>
+    </svg>
+    <figcaption>Files: <code>frontend/src/{App,Board}.jsx</code>, <code>api.js</code> → <code>backend/main.py</code>, <code>auth.py</code>, <code>models.py</code>, <code>db.py</code> → Homebrew Postgres 14.</figcaption>
+  </figure>
+</section>
+
+<!-- 2. WHAT WAS BUILT -->
+<section id="features">
+  <div class="eyebrow">2 · What was built</div>
+  <h2>Every requirement, and where it lives</h2>
+  <div class="grid" style="margin-top:14px">
+    <div class="card" id="f-auth">
+      <h3>🔐 Authentication</h3>
+      <ul>
+        <li>Register / login with email + password (6–72 chars)</li>
+        <li>Passwords stored as bcrypt hashes (cost 12)</li>
+        <li>12-hour JWT. Logout removes it on that device</li>
+        <li>Duplicate email returns <b>409</b>; wrong login returns <b>401</b></li>
+      </ul>
+    </div>
+    <div class="card" id="f-board">
+      <h3>▦ Board</h3>
+      <ul>
+        <li><span class="pill p-gray">To Do</span> <span class="pill p-blue">In Progress</span> <span class="pill p-green">Done</span></li>
+        <li>You only ever see your own tasks: every query filters by <code>user_id</code></li>
+        <li>Another user's task returns 404, not 403, so you can't tell it exists</li>
+      </ul>
+    </div>
+    <div class="card" id="f-crud">
+      <h3>✏️ Task CRUD</h3>
+      <ul>
+        <li>Create (title, description, due date, label)</li>
+        <li>Edit in a modal, delete with confirm</li>
+        <li>Fixed labels: <span class="pill p-red">Bug</span> <span class="pill p-purple">Feature</span> <span class="pill p-blue">Improvement</span> <span class="pill p-amber">Urgent</span> <span class="pill" style="background:#14b8a6">Research</span></li>
+      </ul>
+    </div>
+    <div class="card" id="f-dnd">
+      <h3>↕️ Drag &amp; drop</h3>
+      <ul>
+        <li>Move between columns and reorder within one</li>
+        <li>Saved with an integer <code>position</code>, so a refresh shows the same order</li>
+        <li>Works while filtered: hidden tasks keep their place</li>
+      </ul>
+    </div>
+    <div class="card" id="f-multi">
+      <h3>📱 Multi-device</h3>
+      <ul>
+        <li>The token isn't tied to a device, so you can log in on many at once</li>
+        <li>The board reloads when the window comes back into focus</li>
+        <li>Row locks stop two devices from scrambling the order</li>
+      </ul>
+    </div>
+    <div class="card" id="f-extra">
+      <h3>⭐ Extras</h3>
+      <ul>
+        <li>Due date: amber when due today, red when overdue</li>
+        <li>Search + label filter + due-date filter</li>
+        <li>Responsive: columns stack at 900px or less; touch drag; no iOS zoom on inputs</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 3. DATABASE -->
+<section id="database">
+  <div class="eyebrow">3 · Database</div>
+  <h2>Two tables, rules enforced in the database too</h2>
+  <p class="sub">The API validates first, and the database enforces the same rules again, so bad data can't get in even through code that skips the API.</p>
+  <figure>
+    <svg viewBox="0 0 960 300" role="img" aria-labelledby="er-t">
+      <title id="er-t">users one-to-many tasks</title>
+      <g id="tbl-users"><title>users table</title>
+        <rect x="40" y="20" width="330" height="200" rx="12" fill="var(--card)" stroke="var(--border)" stroke-width="1.5" />
+        <rect x="40" y="20" width="330" height="40" rx="12" fill="var(--primary)" />
+        <text x="60" y="47" fill="#fff" font-size="16" font-weight="700">users</text>
+        <text x="60" y="88" fill="var(--text)" font-size="14" class="mono">id            PK</text>
+        <text x="60" y="114" fill="var(--text)" font-size="14" class="mono">email         UNIQUE</text>
+        <text x="60" y="140" fill="var(--text)" font-size="14" class="mono">password_hash bcrypt</text>
+        <text x="60" y="166" fill="var(--text)" font-size="14" class="mono">created_at</text>
+      </g>
+      <g id="rel"><title>One user has many tasks; deleting a user deletes their tasks</title>
+        <line x1="370" y1="95" x2="560" y2="95" stroke="var(--muted)" stroke-width="2" />
+        <text x="380" y="85" fill="var(--muted)" font-size="13">1</text>
+        <text x="540" y="85" fill="var(--muted)" font-size="13">∞</text>
+        <text x="465" y="120" fill="var(--muted)" font-size="12" text-anchor="middle">ON DELETE CASCADE</text>
+      </g>
+      <g id="tbl-tasks"><title>tasks table</title>
+        <rect x="560" y="20" width="370" height="270" rx="12" fill="var(--card)" stroke="var(--border)" stroke-width="1.5" />
+        <rect x="560" y="20" width="370" height="40" rx="12" fill="var(--green)" />
+        <text x="580" y="47" fill="#fff" font-size="16" font-weight="700">tasks</text>
+        <text x="580" y="88" fill="var(--text)" font-size="14" class="mono">id           PK</text>
+        <text x="580" y="112" fill="var(--text)" font-size="14" class="mono">user_id      FK → users, indexed</text>
+        <text x="580" y="136" fill="var(--text)" font-size="14" class="mono">title        varchar(200)</text>
+        <text x="580" y="160" fill="var(--text)" font-size="14" class="mono">description  text</text>
+        <text x="580" y="184" fill="var(--text)" font-size="14" class="mono">status       CHECK in 3 values</text>
+        <text x="580" y="208" fill="var(--text)" font-size="14" class="mono">position     int, 0 = top</text>
+        <text x="580" y="232" fill="var(--text)" font-size="14" class="mono">due_date     date, nullable</text>
+        <text x="580" y="256" fill="var(--text)" font-size="14" class="mono">label        CHECK in 5 values</text>
+        <text x="580" y="280" fill="var(--muted)" font-size="13" class="mono">created_at · updated_at</text>
+      </g>
+    </svg>
+  </figure>
+  <div class="callout"><b>How ordering works:</b> each column is numbered <code>0, 1, 2, …</code>. To move a card, the server locks both affected columns (<code>SELECT … FOR UPDATE</code>), takes the card out, inserts it at the new index, renumbers both columns from 0, and commits, all in one transaction.</div>
+</section>
+
+<!-- 4. API -->
+<section id="api">
+  <div class="eyebrow">4 · API</div>
+  <h2>8 endpoints, documented at <code>/docs</code></h2>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Does</th><th>Errors</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill p-green">POST</span></td><td><code>/auth/register</code></td><td>Create account and return a token</td><td>409, 422</td></tr>
+        <tr><td><span class="pill p-green">POST</span></td><td><code>/auth/login</code></td><td>Check credentials and return a token</td><td>401</td></tr>
+        <tr><td><span class="pill p-blue">GET</span></td><td><code>/auth/me</code></td><td>Who the token belongs to</td><td>401</td></tr>
+        <tr><td><span class="pill p-blue">GET</span></td><td><code>/tasks</code></td><td>My tasks, ordered by column and position</td><td>401</td></tr>
+        <tr><td><span class="pill p-green">POST</span></td><td><code>/tasks</code></td><td>Create at the bottom of To Do</td><td>401, 422</td></tr>
+        <tr><td><span class="pill p-amber">PUT</span></td><td><code>/tasks/{id}</code></td><td>Edit title / description / due date / label</td><td>401, 404, 422</td></tr>
+        <tr><td><span class="pill p-red">DELETE</span></td><td><code>/tasks/{id}</code></td><td>Delete</td><td>401, 404</td></tr>
+        <tr><td><span class="pill p-purple">PATCH</span></td><td><code>/tasks/{id}/move</code></td><td><code>{status, position}</code> → returns the full updated list</td><td>401, 404, 422</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:12px">Moving is its own endpoint rather than part of <code>PUT</code> because it changes <i>other</i> rows too (the whole column gets renumbered). Keeping it separate makes that side effect explicit.</p>
+</section>
+
+<!-- 5. DRAG FLOW -->
+<section id="drag-flow">
+  <div class="eyebrow">5 · The interesting part</div>
+  <h2>What happens when you drop a card</h2>
+  <figure>
+    <svg viewBox="0 0 960 200" role="img" aria-labelledby="flow-t">
+      <title id="flow-t">Drop, optimistic update, PATCH, transaction, server list replaces UI</title>
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" /></marker>
+      </defs>
+      <g id="s1"><title>User drops the card</title><rect x="10" y="40" width="170" height="90" rx="10" fill="var(--card)" stroke="var(--blue)" stroke-width="1.5"/><text x="95" y="78" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="600">1 · Drop</text><text x="95" y="102" text-anchor="middle" fill="var(--muted)" font-size="12">get visible index</text></g>
+      <line x1="185" y1="85" x2="205" y2="85" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar2)"/>
+      <g id="s2"><title>Convert visible index to full-column index</title><rect x="210" y="40" width="170" height="90" rx="10" fill="var(--card)" stroke="var(--blue)" stroke-width="1.5"/><text x="295" y="78" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="600">2 · Translate</text><text x="295" y="102" text-anchor="middle" fill="var(--muted)" font-size="12">count hidden tasks too</text></g>
+      <line x1="385" y1="85" x2="405" y2="85" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar2)"/>
+      <g id="s3"><title>Update UI immediately</title><rect x="410" y="40" width="170" height="90" rx="10" fill="var(--card)" stroke="var(--blue)" stroke-width="1.5"/><text x="495" y="78" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="600">3 · Optimistic</text><text x="495" y="102" text-anchor="middle" fill="var(--muted)" font-size="12">card moves now</text></g>
+      <line x1="585" y1="85" x2="605" y2="85" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar2)"/>
+      <g id="s4"><title>Server transaction</title><rect x="610" y="40" width="170" height="90" rx="10" fill="var(--card)" stroke="var(--primary)" stroke-width="1.5"/><text x="695" y="78" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="600">4 · PATCH /move</text><text x="695" y="102" text-anchor="middle" fill="var(--muted)" font-size="12">lock · renumber · commit</text></g>
+      <line x1="785" y1="85" x2="805" y2="85" stroke="var(--muted)" stroke-width="2" marker-end="url(#ar2)"/>
+      <g id="s5"><title>Server list replaces local state</title><rect x="810" y="40" width="140" height="90" rx="10" fill="var(--card)" stroke="var(--green)" stroke-width="1.5"/><text x="880" y="78" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="600">5 · Sync</text><text x="880" y="102" text-anchor="middle" fill="var(--muted)" font-size="12">server is truth</text></g>
+      <g id="s-fail"><title>On error, reload the board from the server</title>
+        <path d="M695,135 C695,180 495,180 495,138" fill="none" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+        <text x="595" y="190" text-anchor="middle" fill="var(--red)" font-size="12">error → reload from server</text>
+      </g>
+    </svg>
+    <figcaption>Step 2 matters once filters are on. If you drop at visible slot 1 but there are 3 hidden tasks above it, the server has to receive the real index, otherwise the hidden tasks get reshuffled.</figcaption>
+  </figure>
+</section>
+
+<!-- 6. TECH STACK -->
+<section id="stack">
+  <div class="eyebrow">6 · Tech stack</div>
+  <h2>Why each piece, versus what else</h2>
+
+  <div class="stack-row" id="st-fastapi">
+    <div class="name">FastAPI<small>vs Django + DRF, Flask</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>Request and response types are Python type hints, which gives validation and Swagger docs for free. Little boilerplate, so the whole API is in one readable file.</div>
+        <div><b>vs others</b>DRF has a built-in admin and user model but needs serializers, viewsets and settings. Flask needs add-ons for validation and docs.</div>
+        <div><b class="cost">Trade-off</b>No admin panel, and no built-in migrations or auth: I wrote <code>auth.py</code> myself. For a large team app, Django's conventions scale better.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-row" id="st-pg">
+    <div class="name">PostgreSQL<small>vs MySQL, SQLite, MongoDB</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>Required by the brief, and the right fit: relational data (user → tasks), transactions, and <code>SELECT … FOR UPDATE</code> row locks for safe reordering.</div>
+        <div><b>vs others</b>SQLite allows only one writer at a time. MongoDB has no foreign keys or CHECK rules, so ownership would be enforced only in code.</div>
+        <div><b class="cost">Trade-off</b>A server to run and set up. Overkill for a single user, but that's how production works.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-row" id="st-sqla">
+    <div class="name">SQLAlchemy 2<small>vs raw SQL, Django ORM</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>Typed models (<code>Mapped[...]</code>), parameterised queries (no SQL injection), and readable <code>select()</code> queries.</div>
+        <div><b>vs others</b>Raw SQL is faster to write once but easy to get wrong. The Django ORM only comes with Django.</div>
+        <div><b class="cost">Trade-off</b>Tables are created with <code>create_all</code>, with <b>no migrations</b>: I added the due date and label columns by hand with ALTER TABLE. Production would use Alembic.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-row" id="st-react">
+    <div class="name">React + Vite<small>vs Vue, plain JS, Next.js</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>A board is UI driven by state. With React, moving a card just updates the <code>tasks</code> array and the UI redraws to match. Vite gives instant hot reload while developing.</div>
+        <div><b>vs others</b>Plain JS + SortableJS is lighter but you update the page by hand. Next.js adds server rendering and routing we don't need.</div>
+        <div><b class="cost">Trade-off</b>About 100 KB of JS (gzipped) and a Node toolchain. No TypeScript, to keep it light, so API shapes aren't type-checked.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-row" id="st-dnd">
+    <div class="name">@hello-pangea/dnd<small>vs dnd-kit, native HTML5 DnD</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>Built specifically for lists and Kanban: smooth animations, touch and keyboard support, and it hands you <code>source</code> and <code>destination</code> indexes, which is exactly what <code>/move</code> needs.</div>
+        <div><b>vs others</b>dnd-kit is more flexible (grids, free placement) but needs more code. Native HTML5 drag-and-drop doesn't work on mobile.</div>
+        <div><b class="cost">Trade-off</b>Lists only, and nested scroll areas aren't supported well. That's why on mobile the columns stack and the whole page scrolls.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-row" id="st-css">
+    <div class="name">Plain CSS<small>vs Tailwind, MUI</small></div>
+    <div>
+      <div class="tri">
+        <div><b class="why">Why</b>One 140-line file with colour variables. No build plugin, nothing extra to learn.</div>
+        <div><b>vs others</b>Tailwind is faster for big UIs. MUI looks generic and is heavy.</div>
+        <div><b class="cost">Trade-off</b>Doesn't scale to many screens without a component system.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. TECHNIQUES -->
+<section id="techniques">
+  <div class="eyebrow">7 · Key techniques</div>
+  <h2>Decisions inside the code</h2>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Decision</th><th>Chosen</th><th>Alternative</th><th>Why / trade-off</th></tr></thead>
+      <tbody>
+        <tr id="t-hash"><td>Password hashing</td><td><b>bcrypt</b>, cost 12</td><td>Argon2id; SHA-256 (✗)</td><td>Salted and deliberately slow. Argon2id is newer and also memory-hard, but bcrypt is battle-tested. Fast hashes like SHA-256 are unsafe for passwords.</td></tr>
+        <tr id="t-jwt"><td>Session</td><td><b>Stateless JWT</b> (HS256, 12 h)</td><td>Server sessions + cookie</td><td>No session table, and multiple devices work for free. <span class="cost">Cost: logout can't revoke a token</span>, which stays valid until it expires.</td></tr>
+        <tr id="t-store"><td>Token storage</td><td><b>localStorage</b></td><td>httpOnly cookie</td><td>Simple, no CSRF handling. <span class="cost">Cost: if a script is ever injected into the page (XSS), it can read the token.</span> React escapes text by default, which reduces the risk.</td></tr>
+        <tr id="t-order"><td>Ordering</td><td><b>Integer position</b>, renumber on move</td><td>Fractional keys / LexoRank</td><td>Easy to reason about, and it never drifts. <span class="cost">Cost: each move rewrites the whole column</span>, fine for hundreds of cards. With fractional keys a move writes one row but needs occasional rebalancing.</td></tr>
+        <tr id="t-lock"><td>Concurrency</td><td><b>FOR UPDATE</b> row locks</td><td>Version numbers (optimistic locking)</td><td>Two devices moving at once can't create duplicate positions. Whoever commits last wins, and the UI then shows the server's order.</td></tr>
+        <tr id="t-sync"><td>Multi-device sync</td><td><b>Reload on focus</b></td><td>WebSocket push</td><td>Very little code. <span class="cost">Cost: not live.</span> Another device updates when you switch back to it, not instantly.</td></tr>
+        <tr id="t-filter"><td>Search / filter</td><td><b>In the browser</b></td><td>Server query params</td><td>Instant, no extra requests, and the API already returns only your tasks. <span class="cost">Cost: loads every task</span>. With thousands of tasks this should move to the server.</td></tr>
+        <tr id="t-404"><td>Ownership errors</td><td><b>404</b> for others' tasks</td><td>403</td><td>Doesn't reveal that the task ID exists.</td></tr>
+        <tr id="t-labels"><td>Labels</td><td><b>Fixed list</b> (API Literal + DB CHECK)</td><td>Labels table, many-to-many</td><td>Consistent colours and a simple filter. <span class="cost">Cost: one label per task</span>, and adding a label means changing the code.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 8. KNOWN GAPS -->
+<section id="gaps">
+  <div class="eyebrow">8 · Honest gaps</div>
+  <h2>What I'd fix before production</h2>
+  <div class="grid" style="margin-top:12px">
+    <div class="card" id="g-secret"><span class="sev" style="color:var(--red)">HIGH</span><h3>Default JWT secret</h3><p><code>SECRET_KEY</code> falls back to <code>"dev-secret-change-me"</code>. It must come from the environment in production.</p></div>
+    <div class="card" id="g-rate"><span class="sev" style="color:var(--red)">HIGH</span><h3>No rate limiting</h3><p>Login can be brute-forced. Add per-IP and per-email limits.</p></div>
+    <div class="card" id="g-revoke"><span class="sev" style="color:var(--amber)">MED</span><h3>No token revocation</h3><p>Use short access tokens plus refresh tokens, or a deny-list, for "log out everywhere".</p></div>
+    <div class="card" id="g-mig"><span class="sev" style="color:var(--amber)">MED</span><h3>No migrations</h3><p>Switch <code>create_all</code> + hand-written ALTERs to Alembic.</p></div>
+    <div class="card" id="g-tests"><span class="sev" style="color:var(--amber)">MED</span><h3>No automated tests</h3><p>Verified with curl scripts only. Next would be pytest for <code>/move</code> edge cases and auth isolation.</p></div>
+    <div class="card" id="g-cors"><span class="sev" style="color:var(--muted)">LOW</span><h3>Loose CORS for LAN testing</h3><p>Any host on port 5173 is allowed, so you can test from a phone. Lock it to the real domain when deployed.</p></div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
